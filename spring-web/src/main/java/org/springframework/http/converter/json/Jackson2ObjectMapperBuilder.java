@@ -92,7 +92,7 @@ import org.springframework.util.xml.StaxUtils;
  * support for Kotlin classes and data classes</li>
  * </ul>
  *
- * <p>Compatible with Jackson 2.6 and higher, as of Spring 4.3.
+ * <p>Compatible with Jackson 2.9 to 2.12, as of Spring 5.3.
  *
  * @author Sebastien Deleuze
  * @author Juergen Hoeller
@@ -104,8 +104,6 @@ import org.springframework.util.xml.StaxUtils;
  * @see Jackson2ObjectMapperFactoryBean
  */
 public class Jackson2ObjectMapperBuilder {
-
-	private static volatile boolean kotlinWarningLogged;
 
 	private final Log logger = HttpLogging.forLogName(getClass());
 
@@ -649,8 +647,8 @@ public class Jackson2ObjectMapperBuilder {
 	 * An option to apply additional customizations directly to the
 	 * {@code ObjectMapper} instances at the end, after all other config
 	 * properties of the builder have been applied.
-	 * @param configurer a configurer to apply; if invoked multiple times, all
-	 * configurers are applied in the same order.
+	 * @param configurer a configurer to apply. If several configurers are
+	 * registered, they will get applied in their registration order.
 	 * @since 5.3
 	 */
 	public Jackson2ObjectMapperBuilder postConfigurer(Consumer<ObjectMapper> configurer) {
@@ -863,11 +861,7 @@ public class Jackson2ObjectMapperBuilder {
 				modulesToRegister.set(kotlinModule.getTypeId(), kotlinModule);
 			}
 			catch (ClassNotFoundException ex) {
-				if (!kotlinWarningLogged) {
-					kotlinWarningLogged = true;
-					logger.warn("For Jackson Kotlin classes support please add " +
-							"\"com.fasterxml.jackson.module:jackson-module-kotlin\" to the classpath");
-				}
+				// jackson-module-kotlin not available
 			}
 		}
 	}

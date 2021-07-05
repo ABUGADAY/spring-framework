@@ -9,11 +9,10 @@ https://www.reactive-streams.org/[Reactive Streams] back pressure, and runs on s
 Netty, Undertow, and Servlet 3.1+ containers.
 
 Both web frameworks mirror the names of their source modules
-(https://github.com/spring-projects/spring-framework/tree/master/spring-webmvc[spring-webmvc] and
-https://github.com/spring-projects/spring-framework/tree/master/spring-webflux[spring-webflux])
-and co-exist side by side in the Spring Framework. Each module is optional.
-Applications can use one or the other module or, in some cases, both --
-for example, Spring MVC controllers with the reactive `WebClient`.
+({spring-framework-main-code}/spring-webmvc[spring-webmvc] and
+{spring-framework-main-code}/spring-webflux[spring-webflux]) and co-exist side by side in the
+Spring Framework. Each module is optional. Applications can use one or the other module or,
+in some cases, both -- for example, Spring MVC controllers with the reactive `WebClient`.
 
 
 
@@ -612,10 +611,12 @@ The `DefaultServerWebExchange` uses the configured `HttpMessageReader` to parse 
 
 The `DefaultServerWebExchange` uses the configured
 `HttpMessageReader<MultiValueMap<String, Part>>` to parse `multipart/form-data` content
-into a `MultiValueMap`. At present,
-https://github.com/synchronoss/nio-multipart[Synchronoss NIO Multipart] is the only
-third-party library supported and the only library we know for non-blocking parsing of
-multipart requests. It is enabled through the `ServerCodecConfigurer` bean
+into a `MultiValueMap`.
+By default, this is the `DefaultPartHttpMessageReader`, which does not have any third-party
+dependencies.
+Alternatively, the `SynchronossPartHttpMessageReader` can be used, which is based on the
+https://github.com/synchronoss/nio-multipart[Synchronoss NIO Multipart] library.
+Both are configured through the `ServerCodecConfigurer` bean
 (see the <<webflux-web-handler-api, Web Handler API>>).
 
 To parse multipart data in streaming fashion, you can use the `Flux<Part>` returned from an
@@ -804,9 +805,11 @@ consistently for access to the cached form data versus reading from the raw requ
 `MultipartHttpMessageReader` and `MultipartHttpMessageWriter` support decoding and
 encoding "multipart/form-data" content. In turn `MultipartHttpMessageReader` delegates to
 another `HttpMessageReader` for the actual parsing to a `Flux<Part>` and then simply
-collects the parts into a `MultiValueMap`. At present
-https://github.com/synchronoss/nio-multipart[Synchronoss NIO Multipart] is used for the
-actual parsing.
+collects the parts into a `MultiValueMap`.
+By default, the `DefaultPartHttpMessageReader` is used, but this can be changed through the
+`ServerCodecConfigurer`.
+For more information about the `DefaultPartHttpMessageReader`, refer to to the
+{api-spring-framework}/http/codec/multipart/DefaultPartHttpMessageReader.html[javadoc of `DefaultPartHttpMessageReader`].
 
 On the server side where multipart form content may need to be accessed from multiple
 places, `ServerWebExchange` provides a dedicated `getMultipartData()` method that parses
@@ -964,6 +967,17 @@ The following example shows how to do so for client-side requests:
 			.exchangeStrategies({ strategies -> strategies.codecs(consumer) })
 			.build()
 ----
+
+
+[[webflux-logging-appenders]]
+==== Appenders
+
+Logging libraries such as SLF4J and Log4J 2 provide asynchronous loggers that avoid
+blocking. While those have their own drawbacks such as potentially dropping messages
+that could not be queued for logging, they are the best available options currently
+for use in a reactive, non-blocking application.
+
+
 
 [[webflux-codecs-custom]]
 ==== Custom codecs
@@ -1506,7 +1520,7 @@ segments. For example `/resources/{*path}` matches all files under `/resources/`
 `"path"` variable captures the complete relative path.
 
 The syntax `{varName:regex}` declares a URI variable with a regular expression that has the
-syntax: `{varName:regex}`. For example, given a URL of `/spring-web-3.0.5 .jar`, the following method
+syntax: `{varName:regex}`. For example, given a URL of `/spring-web-3.0.5.jar`, the following method
 extracts the name, version, and file extension:
 
 [source,java,indent=0,subs="verbatim,quotes",role="primary"]
@@ -1888,8 +1902,8 @@ and others) and is equivalent to `required=false`.
   See <<webflux-ann-sessionattributes>> for more details.
 
 | `UriComponentsBuilder`
-| For preparing a URL relative to the current request's host, port, scheme, and path.
-  See <<webflux-uri-building>>.
+| For preparing a URL relative to the current request's host, port, scheme, and
+  context path. See <<webflux-uri-building>>.
 
 | `@SessionAttribute`
 | For access to any session attribute -- in contrast to model attributes stored in the session
@@ -1993,6 +2007,12 @@ For such cases, type conversion is automatically applied based on the configured
 By default, simple types (such as `int`, `long`, `Date`, and others) are supported. Type conversion
 can be customized through a `WebDataBinder` (see <<webflux-ann-initbinder>>) or by registering
 `Formatters` with the `FormattingConversionService` (see <<core.adoc#format, Spring Field Formatting>>).
+
+A practical issue in type conversion is the treatment of an empty String source value.
+Such a value is treated as missing if it becomes `null` as a result of type conversion.
+This can be the case for `Long`, `UUID`, and other target types. If you want to allow `null`
+to be injected, either use the `required` flag on the argument annotation, or declare the
+argument as `@Nullable`.
 
 
 [[webflux-ann-matrix-variables]]
@@ -2312,7 +2332,7 @@ Type conversion is applied automatically if the target method parameter type is 
 [.small]#<<web.adoc#mvc-ann-modelattrib-method-args, Web MVC>>#
 
 You can use the `@ModelAttribute` annotation on a method argument to access an attribute from the
-model or have it instantiated if not present. The model attribute is also overlain with
+model or have it instantiated if not present. The model attribute is also overlaid with
 the values of query parameters and form fields whose names match to field names. This is
 referred to as data binding, and it saves you from having to deal with parsing and
 converting individual query parameters and form fields. The following example binds an instance of `Pet`:
@@ -2972,7 +2992,17 @@ configure or customize message writing.
 
 WebFlux supports using a single value <<webflux-reactive-libraries, reactive type>> to
 produce the `ResponseEntity` asynchronously, and/or single and multi-value reactive types
-for the body.
+for the body. This allows a variety of async responses with `ResponseEntity` as follows:
+
+* `ResponseEntity<Mono<T>>` or `ResponseEntity<Flux<T>>` make the response status and
+  headers known immediately while the body is provided asynchronously at a later point.
+  Use `Mono` if the body consists of 0..1 values or `Flux` if it can produce multiple values.
+* `Mono<ResponseEntity<T>>` provides all three -- response status, headers, and body,
+  asynchronously at a later point. This allows the response status and headers to vary
+  depending on the outcome of asynchronous request handling.
+* `Mono<ResponseEntity<Mono<T>>>` or `Mono<ResponseEntity<Flux<T>>>` are yet another
+  possible, albeit less common alternative. They provide the response status and headers
+  asynchronously first and then the response body, also asynchronously, second.
 
 
 [[webflux-ann-jackson]]
@@ -3209,7 +3239,7 @@ initialize instances of `WebDataBinder`. Those, in turn, are used to:
 headers, cookies, and others) to the target type of controller method arguments.
 * Format model object values as `String` values when rendering HTML forms.
 
-`@InitBinder` methods can register controller-specific `java.bean.PropertyEditor` or
+`@InitBinder` methods can register controller-specific `java.beans.PropertyEditor` or
 Spring `Converter` and `Formatter` components. In addition, you can use the
 <<webflux-config-conversion, WebFlux Java configuration>> to register `Converter` and
 `Formatter` types in a globally shared `FormattingConversionService`.

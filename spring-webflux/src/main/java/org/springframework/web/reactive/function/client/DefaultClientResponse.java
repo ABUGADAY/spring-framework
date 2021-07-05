@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.springframework.web.reactive.function.client;
 
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +53,9 @@ import org.springframework.web.reactive.function.BodyExtractors;
  * @since 5.0
  */
 class DefaultClientResponse implements ClientResponse {
+
+	private static final byte[] EMPTY = new byte[0];
+
 
 	private final ClientHttpResponse response;
 
@@ -200,12 +202,11 @@ class DefaultClientResponse implements ClientResponse {
 					DataBufferUtils.release(dataBuffer);
 					return bytes;
 				})
-				.defaultIfEmpty(new byte[0])
+				.defaultIfEmpty(EMPTY)
+				.onErrorReturn(IllegalStateException.class::isInstance, EMPTY)
 				.map(bodyBytes -> {
 					HttpRequest request = this.requestSupplier.get();
-					Charset charset = headers().contentType()
-							.map(MimeType::getCharset)
-							.orElse(StandardCharsets.ISO_8859_1);
+					Charset charset = headers().contentType().map(MimeType::getCharset).orElse(null);
 					int statusCode = rawStatusCode();
 					HttpStatus httpStatus = HttpStatus.resolve(statusCode);
 					if (httpStatus != null) {
